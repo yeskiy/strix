@@ -39,7 +39,9 @@ class CompactionConfig:
             if cs.reserved_output is not None
             else min(RESERVED_OUTPUT_CAP, max_output_for(session_model))
         )
-        usable = max(1, context_window(session_model) - reserved)
+        usable = max(
+            1, context_window(session_model, override=cs.context_window or None) - reserved
+        )
         return cls(
             enabled=cs.enabled,
             threshold=cs.threshold,

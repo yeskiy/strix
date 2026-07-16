@@ -66,6 +66,7 @@ class CompactionSettings(BaseSettings):
     enabled: bool = Field(default=True, alias="STRIX_COMPACTION")
     threshold: float = Field(default=0.90, alias="STRIX_COMPACTION_THRESHOLD")
     reserved_output: int | None = Field(default=None, alias="STRIX_COMPACTION_RESERVED_OUTPUT")
+    context_window: int = Field(default=0, alias="STRIX_COMPACTION_CONTEXT_WINDOW")
     tail_turns: int = Field(default=2, alias="STRIX_COMPACTION_TAIL_TURNS")
     preserve_recent_tokens: int = Field(
         default=16000, alias="STRIX_COMPACTION_PRESERVE_RECENT_TOKENS"

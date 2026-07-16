@@ -27,6 +27,22 @@ def test_context_window_unknown_model_falls_back() -> None:
     assert context_window("totally/unknown-model-xyz") == DEFAULT_CONTEXT_WINDOW
 
 
+def test_context_window_known_override_map() -> None:
+    assert context_window("z-ai/glm-5.2") == 1_048_576
+    assert context_window("openrouter/z-ai/glm-5.2") == 1_048_576
+
+
+def test_context_window_explicit_override_wins() -> None:
+    assert context_window("some/unknown-model-xyz") == 128000
+    assert context_window("some/unknown-model-xyz", override=500000) == 500000
+
+
+def test_context_window_override_zero_or_none_falls_through() -> None:
+    assert context_window("z-ai/glm-5.2", override=0) == 1_048_576
+    assert context_window("z-ai/glm-5.2", override=None) == 1_048_576
+    assert context_window("some/unknown-model-xyz", override=0) == DEFAULT_CONTEXT_WINDOW
+
+
 def test_max_output_for_known_model() -> None:
     assert max_output_for("gpt-4o") == 16384
 

@@ -50,3 +50,15 @@ def test_from_env_summary_model_override() -> None:
     cfg = CompactionConfig.from_env(session_model="openai/gpt-4o", settings=settings)
     assert cfg.summary_model == "deepseek/deepseek-v4-flash"
     assert cfg.session_model == "openai/gpt-4o"
+
+
+def test_from_env_context_window_override() -> None:
+    settings = Settings(compaction={"reserved_output": 1000, "context_window": 200000})
+    cfg = CompactionConfig.from_env(session_model="openrouter/z-ai/glm-5.2", settings=settings)
+    assert cfg.usable_window == 200000 - 1000
+
+
+def test_from_env_uses_known_window_when_override_unset() -> None:
+    settings = Settings(compaction={"reserved_output": 1000})
+    cfg = CompactionConfig.from_env(session_model="openrouter/z-ai/glm-5.2", settings=settings)
+    assert cfg.usable_window == 1_048_576 - 1000

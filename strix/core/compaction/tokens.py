@@ -11,6 +11,12 @@ DEFAULT_CONTEXT_WINDOW = 128000
 DEFAULT_MAX_OUTPUT = 16000
 CHARS_PER_TOKEN = 4
 
+# Context windows for models litellm has not cataloged yet. Keys are lowercase
+# and match the normalized model name (and its provider-stripped suffix).
+KNOWN_CONTEXT_WINDOWS = {
+    "z-ai/glm-5.2": 1_048_576,
+}
+
 
 def _normalize_model_name(model: str) -> str:
     name = model.strip().lower()
@@ -31,7 +37,24 @@ def _model_cost_entry(model: str) -> dict[str, Any] | None:
     return entry if isinstance(entry, dict) else None
 
 
-def context_window(model: str) -> int:
+def _known_context_window(model: str) -> int | None:
+    name = _normalize_model_name(model)
+    candidates = [name]
+    if "/" in name:
+        candidates.append(name.split("/", 1)[1])
+    for candidate in candidates:
+        value = KNOWN_CONTEXT_WINDOWS.get(candidate)
+        if value is not None:
+            return value
+    return None
+
+
+def context_window(model: str, override: int | None = None) -> int:
+    if override is not None and override > 0:
+        return override
+    known = _known_context_window(model)
+    if known is not None:
+        return known
     entry = _model_cost_entry(model)
     if entry is None:
         return DEFAULT_CONTEXT_WINDOW
