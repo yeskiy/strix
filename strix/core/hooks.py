@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from agents.lifecycle import RunHooks
 
+from strix.core.compaction.store import get_store
 from strix.report.state import get_global_report_state
 
 
@@ -63,6 +64,11 @@ class ReportUsageHooks(RunHooks[dict[str, Any]]):
             )
         except Exception:
             logger.exception("failed to record SDK usage for agent %s", agent_id)
+
+        usage = getattr(response, "usage", None)
+        input_tokens = getattr(usage, "input_tokens", 0) if usage is not None else 0
+        if isinstance(input_tokens, int) and input_tokens > 0:
+            get_store().record_real_usage(agent_id, input_tokens)
 
         if self._max_budget_usd is not None:
             cost = report_state.get_total_llm_cost()

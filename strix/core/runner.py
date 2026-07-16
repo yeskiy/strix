@@ -22,6 +22,9 @@ from strix.config.models import (
     uses_chat_completions_tool_schema,
 )
 from strix.core.agents import AgentCoordinator
+from strix.core.compaction.config import CompactionConfig
+from strix.core.compaction.filter import build_compaction_filter
+from strix.core.compaction.store import get_store
 from strix.core.execution import (
     respawn_subagents,
     run_agent_loop,
@@ -216,12 +219,17 @@ async def run_strix_scan(
             model_name=resolved_model,
             force_required_tool_choice=settings.llm.force_required_tool_choice,
         )
+        compaction_cfg = CompactionConfig.from_env(session_model=resolved_model, settings=settings)
+        compaction_filter = (
+            build_compaction_filter(compaction_cfg, get_store()) if compaction_cfg.enabled else None
+        )
         run_config = RunConfig(
             model=resolved_model,
             model_provider=StrixProvider(),
             model_settings=model_settings,
             sandbox=SandboxRunConfig(client=bundle["client"], session=bundle["session"]),
             trace_include_sensitive_data=False,
+            call_model_input_filter=compaction_filter,
         )
         hooks = ReportUsageHooks(model=resolved_model, max_budget_usd=max_budget_usd)
 

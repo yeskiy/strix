@@ -12,6 +12,7 @@ from openai import RateLimitError
 
 import strix.tools.notes.tools as notes_tools
 import strix.tools.todo.tools as todo_tools
+from strix.config.settings import CompactionSettings
 from strix.core import runner
 from strix.core.agents import AgentCoordinator
 
@@ -39,6 +40,7 @@ async def test_persistent_rate_limit_stops_gracefully(
             force_required_tool_choice=False,
         ),
         runtime=types.SimpleNamespace(max_context_images=3),
+        compaction=CompactionSettings(),
     )
     monkeypatch.setattr(runner, "load_settings", lambda: settings)
     monkeypatch.setattr(runner, "configure_sdk_model_defaults", lambda _settings: None)
