@@ -64,7 +64,15 @@ def build_compaction_filter(
                 return model_data
             return ModelInputData(input=eff, instructions=model_data.instructions)
 
+        logger.info(
+            "compaction triggered: agent=%s est_tokens=%d threshold=%d forced=%s",
+            agent_id,
+            estimate_tokens(eff, ratio),
+            int(threshold_tokens),
+            forced,
+        )
         result = await _compact(agent_id, items, state, ratio, forced)
+        logger.info("compaction done: agent=%s items %d -> %d", agent_id, len(items), len(result))
         store.record_pending_chars(agent_id, char_count(result))
         return ModelInputData(input=result, instructions=model_data.instructions)
 
