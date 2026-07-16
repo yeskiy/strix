@@ -155,3 +155,14 @@ def test_make_model_settings_forces_required_for_anyllm_routed_openai_model() ->
     )
 
     assert settings.tool_choice == "required"
+
+
+def test_make_model_settings_openrouter_sets_middle_out() -> None:
+    settings = make_model_settings("none", model_name="openrouter/z-ai/glm-4.6")
+    assert settings.extra_body == {"transforms": ["middle-out"]}
+
+
+def test_make_model_settings_non_openrouter_no_middle_out() -> None:
+    settings = make_model_settings("none", model_name="openai/gpt-4o")
+    extra_body = settings.extra_body or {}
+    assert "transforms" not in extra_body

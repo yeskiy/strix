@@ -132,6 +132,10 @@ def make_model_settings(
         retry=DEFAULT_MODEL_RETRY,
         include_usage=True,
     )
+    if "openrouter/" in model_name:
+        model_settings = model_settings.resolve(
+            ModelSettings(extra_body={"transforms": ["middle-out"]}),
+        )
     if (
         reasoning_effort is not None
         and reasoning_effort != "none"
