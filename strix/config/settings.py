@@ -60,6 +60,22 @@ class RuntimeSettings(BaseSettings):
     max_context_images: int = Field(default=3, ge=0, alias="STRIX_MAX_CONTEXT_IMAGES")
 
 
+class CompactionSettings(BaseSettings):
+    model_config = _BASE_CONFIG
+
+    enabled: bool = Field(default=True, alias="STRIX_COMPACTION")
+    threshold: float = Field(default=0.90, alias="STRIX_COMPACTION_THRESHOLD")
+    reserved_output: int | None = Field(default=None, alias="STRIX_COMPACTION_RESERVED_OUTPUT")
+    tail_turns: int = Field(default=2, alias="STRIX_COMPACTION_TAIL_TURNS")
+    preserve_recent_tokens: int = Field(
+        default=16000, alias="STRIX_COMPACTION_PRESERVE_RECENT_TOKENS"
+    )
+    prune: bool = Field(default=True, alias="STRIX_COMPACTION_PRUNE")
+    prune_protect_tokens: int = Field(default=40000, alias="STRIX_COMPACTION_PRUNE_PROTECT_TOKENS")
+    prune_min_reclaim: int = Field(default=20000, alias="STRIX_COMPACTION_PRUNE_MIN_RECLAIM")
+    model: str | None = Field(default=None, alias="STRIX_COMPACTION_MODEL")
+
+
 class TelemetrySettings(BaseSettings):
     model_config = _BASE_CONFIG
 
@@ -77,5 +93,6 @@ class Settings(BaseSettings):
 
     llm: LlmSettings = Field(default_factory=LlmSettings)
     runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
+    compaction: CompactionSettings = Field(default_factory=CompactionSettings)
     telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
     integrations: IntegrationSettings = Field(default_factory=IntegrationSettings)
