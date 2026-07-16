@@ -373,6 +373,9 @@ def build_live_stats_text(report_state: Any) -> Text:
 
 
 def build_tui_stats_text(report_state: Any) -> Text:
+    from strix.core.compaction.store import get_store
+    from strix.core.compaction.tokens import context_window
+
     stats_text = Text()
     if not report_state:
         return stats_text
@@ -391,6 +394,18 @@ def build_tui_stats_text(report_state: Any) -> Text:
         if cost > 0:
             stats_text.append(" · ", style="white")
             stats_text.append(f"${cost:.2f}", style="white")
+
+    used = get_store().latest_input_tokens()
+    window = context_window(str(model))
+    if used > 0 and window > 0:
+        pct = int(min(100, used * 100 // window))
+        stats_text.append("\n")
+        stats_text.append("context ", style="dim")
+        stats_text.append(
+            f"{format_token_count(used)} / {format_token_count(window)}",
+            style="white",
+        )
+        stats_text.append(f" ({pct}%)", style="white")
 
     caido_url = getattr(report_state, "caido_url", None)
     if caido_url:
@@ -1147,9 +1162,7 @@ def read_target_list_file(path_str: str) -> list[str]:
             if (target := line.strip()) and not target.startswith("#")
         ]
     except UnicodeDecodeError as e:
-        raise ValueError(
-            f"Target list file '{path_str}' must be valid UTF-8 text: {e!s}"
-        ) from e
+        raise ValueError(f"Target list file '{path_str}' must be valid UTF-8 text: {e!s}") from e
     except OSError as e:
         raise ValueError(f"Failed to read target list file '{path_str}': {e!s}") from e
 
