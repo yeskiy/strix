@@ -9,6 +9,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_COMPACT_COMMANDS = frozenset({"/compact", "/compress"})
+
 
 def send_user_message_to_agent(
     *,
@@ -20,6 +22,18 @@ def send_user_message_to_agent(
 ) -> bool:
     if loop is None or loop.is_closed():
         return False
+
+    if message.strip().lower() in _COMPACT_COMMANDS:
+        live_view.record_system_message(
+            target_agent_id,
+            "Compaction requested; it runs before this agent's next model call.",
+        )
+        future = asyncio.run_coroutine_threadsafe(
+            coordinator.request_compaction(target_agent_id),
+            loop,
+        )
+        future.add_done_callback(_log_delivery_failure)
+        return True
 
     live_view.record_user_message(target_agent_id, message)
     future = asyncio.run_coroutine_threadsafe(

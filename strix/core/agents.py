@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+from strix.core.compaction.store import get_store
 from strix.core.sessions import session_write_lock
 
 
@@ -63,6 +64,14 @@ class AgentCoordinator:
             self._budget_stopped = True
             for runtime in self.runtimes.values():
                 runtime.wake.set()
+
+    async def request_compaction(self, agent_id: str) -> bool:
+        """Flag ``agent_id`` for compaction on its next model call. Returns whether it is known."""
+        async with self._lock:
+            known = agent_id in self.statuses
+        if known:
+            get_store().request_compaction(agent_id)
+        return known
 
     async def register(
         self,
