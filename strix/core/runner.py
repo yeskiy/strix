@@ -10,10 +10,16 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from agents import RunConfig
+from agents.mcp import MCPServerManager
 from agents.sandbox import SandboxRunConfig
 from openai import RateLimitError
 
-from strix.agents.factory import build_strix_agent, make_child_factory
+from strix.agents.factory import (
+    build_strix_agent,
+    clear_mcp_servers,
+    make_child_factory,
+    register_mcp_servers,
+)
 from strix.agents.prompt import render_system_prompt
 from strix.config import load_settings
 from strix.config.models import (
@@ -39,6 +45,7 @@ from strix.core.inputs import (
     build_scope_context,
     make_model_settings,
 )
+from strix.core.mcp import build_mcp_servers, mcp_connect_timeout
 from strix.core.paths import run_dir_for, runtime_state_dir
 from strix.core.sessions import open_agent_session
 from strix.runtime import session_manager
@@ -207,6 +214,7 @@ async def run_strix_scan(
     logger.info("Sandbox ready for scan %s", scan_id)
 
     sessions_to_close: list[SQLiteSession] = []
+    mcp_stack = contextlib.AsyncExitStack()
 
     try:
         targets = scan_config.get("targets") or []
@@ -243,6 +251,33 @@ async def run_strix_scan(
             interactive=interactive,
             system_prompt_context=root_context,
         )
+
+        # --- MCP servers (host subprocesses, outside the sandbox) ---
+        # Connect once here so the connected set is registered before the root
+        # agent (and every child) is built. drop_failed_servers keeps the scan
+        # alive when one server is unavailable.
+        mcp_servers = build_mcp_servers(settings.mcp_servers)
+        if mcp_servers:
+            mcp_manager = await mcp_stack.enter_async_context(
+                MCPServerManager(
+                    mcp_servers,
+                    connect_timeout_seconds=mcp_connect_timeout(settings.mcp_servers),
+                    drop_failed_servers=True,
+                    strict=False,
+                )
+            )
+            register_mcp_servers(mcp_manager.active_servers)
+            for server in mcp_manager.active_servers:
+                tool_count: int | None = None
+                with contextlib.suppress(Exception):
+                    tool_count = len(await server.list_tools())
+                logger.info(
+                    "MCP server connected: %s (tools=%s)", server.name, tool_count
+                )
+            for server in mcp_manager.failed_servers:
+                logger.warning(
+                    "MCP server failed to connect (scan continues): %s", server.name
+                )
 
         root_agent = build_strix_agent(
             name="strix",
@@ -406,6 +441,9 @@ async def run_strix_scan(
                 await coordinator.set_status(root_id, "failed")
         raise
     finally:
+        clear_mcp_servers()
+        with contextlib.suppress(Exception):
+            await mcp_stack.aclose()
         for s in sessions_to_close:
             with contextlib.suppress(Exception):
                 s.close()
