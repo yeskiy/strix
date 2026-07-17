@@ -19,6 +19,7 @@ def test_required_sections_present_in_template() -> None:
         "## Objective",
         "## Important Details",
         "## Findings / Artifacts",
+        "## Tested / Ruled Out",
         "## Work State",
         "## Next Move",
         "## Relevant Files",
@@ -28,6 +29,19 @@ def test_required_sections_present_in_template() -> None:
         assert section in SUMMARY_TEMPLATE
     for sub in ("### Completed", "### Active", "### Blocked"):
         assert sub in SUMMARY_TEMPLATE
+
+
+def test_tested_ruled_out_section_after_findings() -> None:
+    assert "## Tested / Ruled Out" in SUMMARY_SECTIONS
+    assert "## Tested / Ruled Out" in SUMMARY_TEMPLATE
+
+    sections = list(SUMMARY_SECTIONS)
+    assert sections.index("## Tested / Ruled Out") == sections.index("## Findings / Artifacts") + 1
+
+    findings_at = SUMMARY_TEMPLATE.index("## Findings / Artifacts")
+    tested_at = SUMMARY_TEMPLATE.index("## Tested / Ruled Out")
+    work_state_at = SUMMARY_TEMPLATE.index("## Work State")
+    assert findings_at < tested_at < work_state_at
 
 
 def test_system_prompt_names_key_rules() -> None:
