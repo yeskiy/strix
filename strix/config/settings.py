@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -89,6 +89,32 @@ class IntegrationSettings(BaseSettings):
     perplexity_api_key: str | None = Field(default=None, alias="PERPLEXITY_API_KEY")
 
 
+MCPTransport = Literal["stdio", "sse", "streamable_http"]
+
+
+class MCPServerConfig(BaseModel):
+    """One MCP server the CLI attaches to every scan agent.
+
+    stdio servers run as host subprocesses, outside the Docker sandbox. Any
+    secrets belong in ``env`` / ``headers`` inside the 0600 cli-config.json and
+    are never logged.
+    """
+
+    model_config = _BASE_CONFIG
+
+    name: str
+    enabled: bool = True
+    transport: MCPTransport = "stdio"
+    command: str | None = None
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+    url: str | None = None
+    headers: dict[str, str] = Field(default_factory=dict)
+    allowed_tools: list[str] = Field(default_factory=list)
+    cache_tools_list: bool = True
+    connect_timeout_seconds: float = 30.0
+
+
 class Settings(BaseSettings):
     model_config = _BASE_CONFIG
 
@@ -97,3 +123,4 @@ class Settings(BaseSettings):
     compaction: CompactionSettings = Field(default_factory=CompactionSettings)
     telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
     integrations: IntegrationSettings = Field(default_factory=IntegrationSettings)
+    mcp_servers: list[MCPServerConfig] = Field(default_factory=list)
