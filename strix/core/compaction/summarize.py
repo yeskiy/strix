@@ -53,11 +53,16 @@ async def summarize_head(items: list[Any], prev_summary: str | None, cfg: Compac
         {"role": "system", "content": SUMMARIZER_SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
     ]
-    response = await litellm.acompletion(
-        model=_normalize_summary_model(cfg.summary_model),
-        messages=messages,
-        stream=False,
-        drop_params=True,
-        temperature=0,
-    )
+    kwargs: dict[str, Any] = {
+        "model": _normalize_summary_model(cfg.summary_model),
+        "messages": messages,
+        "stream": False,
+        "drop_params": True,
+        "temperature": 0,
+    }
+    # OpenRouter's middle-out transform lets an oversized head still summarize
+    # instead of hard-failing the summarizer call on a context-window overflow.
+    if "openrouter/" in cfg.summary_model.lower():
+        kwargs["extra_body"] = {"transforms": ["middle-out"]}
+    response = await litellm.acompletion(**kwargs)
     return _extract_text(response)

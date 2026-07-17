@@ -66,3 +66,27 @@ async def test_empty_content_returns_empty_string() -> None:
     with patch("litellm.acompletion", mock):
         out = await summarize_head([{"role": "user", "content": "x"}], None, _cfg())
     assert out == ""
+
+
+@pytest.mark.asyncio
+async def test_summarize_head_openrouter_sets_middle_out() -> None:
+    mock = AsyncMock(return_value=_fake_response("SUM"))
+    with patch("litellm.acompletion", mock):
+        await summarize_head(
+            [{"role": "user", "content": "hi"}],
+            None,
+            _cfg(summary_model="openrouter/z-ai/glm-5.2"),
+        )
+    assert mock.await_args.kwargs.get("extra_body") == {"transforms": ["middle-out"]}
+
+
+@pytest.mark.asyncio
+async def test_summarize_head_non_openrouter_no_transform() -> None:
+    mock = AsyncMock(return_value=_fake_response("SUM"))
+    with patch("litellm.acompletion", mock):
+        await summarize_head(
+            [{"role": "user", "content": "hi"}],
+            None,
+            _cfg(summary_model="openai/gpt-4o"),
+        )
+    assert "extra_body" not in mock.await_args.kwargs

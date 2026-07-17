@@ -51,8 +51,11 @@ async def test_identity_pass_below_threshold_returns_same_object() -> None:
 @pytest.mark.asyncio
 async def test_over_threshold_triggers_summary() -> None:
     store = CompactionStore()
-    # small window so any real history trips it; big history so head is non-empty
-    filt = build_compaction_filter(_cfg(usable_window=50, prune_enabled=False), store)
+    # small window so any real history trips it; small preserve budget so the two
+    # big leading turns fall into a non-empty head to summarize.
+    filt = build_compaction_filter(
+        _cfg(usable_window=50, preserve_recent_tokens=30, prune_enabled=False), store
+    )
     items = [
         {"role": "user", "content": "t1 " + "x" * 500},
         {"role": "assistant", "content": "a1 " + "y" * 500},
@@ -78,7 +81,11 @@ async def test_over_threshold_triggers_summary() -> None:
 @pytest.mark.asyncio
 async def test_force_flag_triggers_compaction_then_clears() -> None:
     store = CompactionStore()
-    filt = build_compaction_filter(_cfg(usable_window=1_000_000, prune_enabled=False), store)
+    # small preserve budget so a non-empty head exists to summarize even on a
+    # tiny forced history (the token-budget split no longer keys off turn count).
+    filt = build_compaction_filter(
+        _cfg(usable_window=1_000_000, preserve_recent_tokens=20, prune_enabled=False), store
+    )
     items = [
         {"role": "user", "content": "t1"},
         {"role": "assistant", "content": "a1"},
@@ -93,7 +100,10 @@ async def test_force_flag_triggers_compaction_then_clears() -> None:
         AsyncMock(return_value="SUMMARY"),
     ):
         result = await filt(payload)
-    assert result.input[0]["content"].endswith("SUMMARY")
+    # the summary carrier leads the output; healing may append a merged user tail
+    assert result.input[0]["content"].startswith("Context summary of earlier work")
+    assert "SUMMARY" in result.input[0]["content"]
+    assert store.state("root").summary == "SUMMARY"
     assert store.consume_force("root") is False
 
 
@@ -105,7 +115,7 @@ async def test_cached_summary_reused_below_threshold() -> None:
     items = [
         {"role": "user", "content": "t1"},
         {"role": "assistant", "content": "a1"},
-        {"role": "user", "content": "t2"},
+        {"role": "assistant", "content": "a2"},
     ]
     mock = AsyncMock(return_value="NEW")
     with patch("strix.core.compaction.filter.summarize_head", mock):
@@ -114,6 +124,50 @@ async def test_cached_summary_reused_below_threshold() -> None:
     mock.assert_not_awaited()
     assert result.input[0]["content"].endswith("CACHED")
     assert result.input[1:] == items[2:]
+
+
+@pytest.mark.asyncio
+async def test_filter_output_has_no_consecutive_roles() -> None:
+    store = CompactionStore()
+    # over threshold, but the tail budget still keeps a real fc/fco pair; the
+    # history ends with two consecutive user messages that the sanitizer must heal.
+    filt = build_compaction_filter(
+        _cfg(usable_window=400, preserve_recent_tokens=200, prune_enabled=False), store
+    )
+    items = [
+        {"role": "user", "content": "t1 " + "x" * 500},
+        {"role": "assistant", "content": "a1 " + "y" * 500},
+        {"role": "assistant", "content": "a1b " + "y" * 500},
+        {"type": "function_call", "call_id": "c1", "name": "browser", "arguments": "{}"},
+        {"type": "function_call_output", "call_id": "c1", "output": "z" * 500},
+        {"role": "assistant", "content": "a2 " + "y" * 100},
+        {"role": "user", "content": "u1"},
+        {"role": "user", "content": "u2"},
+    ]
+    with patch(
+        "strix.core.compaction.filter.summarize_head",
+        AsyncMock(return_value="## Objective\n- ok"),
+    ):
+        result = await filt(_payload(items))
+
+    out = result.input
+    prev_role: str | None = None
+    for it in out:
+        role = it.get("role") if isinstance(it, dict) else None
+        if role in {"user", "assistant"}:
+            assert role != prev_role, f"consecutive {role} messages in output"
+            prev_role = role
+        else:
+            prev_role = None
+
+    seen_calls: set[Any] = set()
+    for it in out:
+        if not isinstance(it, dict):
+            continue
+        if it.get("type") == "function_call":
+            seen_calls.add(it.get("call_id"))
+        elif it.get("type") == "function_call_output":
+            assert it.get("call_id") in seen_calls, "orphaned function_call_output"
 
 
 @pytest.mark.asyncio

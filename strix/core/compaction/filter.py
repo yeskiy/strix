@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING, Any
 
 from agents.run_config import CallModelData, ModelInputData
 
-from strix.core.compaction.history import split_head_tail, strip_images
+from strix.core.compaction.history import (
+    merge_consecutive_roles,
+    split_head_tail,
+    strip_images,
+    trim_front_to_budget,
+)
 from strix.core.compaction.prompt import summary_message
 from strix.core.compaction.prune import prune_tool_outputs
 from strix.core.compaction.summarize import summarize_head
@@ -62,7 +67,9 @@ def build_compaction_filter(
         if not forced and estimate_tokens(eff, ratio) < threshold_tokens:
             if state.summary is None:
                 return model_data
-            return ModelInputData(input=eff, instructions=model_data.instructions)
+            return ModelInputData(
+                input=merge_consecutive_roles(eff), instructions=model_data.instructions
+            )
 
         logger.info(
             "compaction triggered: agent=%s est_tokens=%d threshold=%d forced=%s",
@@ -71,7 +78,7 @@ def build_compaction_filter(
             int(threshold_tokens),
             forced,
         )
-        result = await _compact(agent_id, items, state, ratio, forced)
+        result = merge_consecutive_roles(await _compact(agent_id, items, state, ratio, forced))
         logger.info("compaction done: agent=%s items %d -> %d", agent_id, len(items), len(result))
         store.record_pending_chars(agent_id, char_count(result))
         return ModelInputData(input=result, instructions=model_data.instructions)
@@ -107,6 +114,16 @@ def build_compaction_filter(
             return eff_pruned
 
         store.set_summary(agent_id, new_summary, len(head))
-        return [summary_message(new_summary), *strip_images(tail)]
+        summarized = [summary_message(new_summary), *strip_images(tail)]
+        capped = trim_front_to_budget(summarized, cfg.usable_window, ratio)
+        if len(capped) < len(summarized):
+            logger.info(
+                "compaction hard-trim: agent=%s items %d -> %d over usable_window=%d",
+                agent_id,
+                len(summarized),
+                len(capped),
+                cfg.usable_window,
+            )
+        return capped
 
     return _filter
