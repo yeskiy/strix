@@ -54,7 +54,11 @@ def apply_config_override(path: Path) -> None:
 
 
 def persist_current() -> None:
-    """Write currently-set env vars to the active config file (0o600)."""
+    """Write currently-set env vars to the active config file (0o600).
+
+    Preserves any ``mcp_servers`` array already in the file so persisting
+    secrets never clobbers the user's MCP configuration.
+    """
     s = load_settings()
     target = _override or _DEFAULT_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -71,9 +75,28 @@ def persist_current() -> None:
                     env_block[alias.upper()] = value
                     break
 
-    target.write_text(json.dumps({"env": env_block}, indent=2), encoding="utf-8")
+    payload: dict[str, Any] = {"env": env_block}
+    preserved = _existing_mcp_servers(target)
+    if preserved is not None:
+        payload["mcp_servers"] = preserved
+
+    target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     with contextlib.suppress(OSError):
         target.chmod(0o600)
+
+
+def _existing_mcp_servers(path: Path) -> list[Any] | None:
+    """Return the ``mcp_servers`` array already stored in ``path``, if any."""
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    servers = data.get("mcp_servers")
+    return servers if isinstance(servers, list) else None
 
 
 def _aliases_for(finfo: FieldInfo) -> list[str]:
@@ -89,11 +112,13 @@ def _aliases_for(finfo: FieldInfo) -> list[str]:
     return aliases
 
 
-def _read_json_overrides(path: Path) -> dict[str, dict[str, Any]]:
-    """Read ``{"env": {...}}`` from ``path`` and remap to nested kwargs.
+def _read_json_overrides(path: Path) -> dict[str, Any]:
+    """Read ``{"env": {...}, "mcp_servers": [...]}`` from ``path`` and remap.
 
-    Only includes keys whose env var is NOT already set, so env always
-    wins over the persisted file.
+    ``env`` maps to nested sub-model kwargs (an env var still wins over the
+    file for any field it sets). ``mcp_servers`` is passed straight through to
+    ``Settings.mcp_servers``. Only includes env keys whose var is NOT already
+    set, so the process environment always wins over the persisted file.
     """
     if not path.exists():
         return {}
@@ -101,14 +126,16 @@ def _read_json_overrides(path: Path) -> dict[str, dict[str, Any]]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return {}
-    env_block = data.get("env", {}) if isinstance(data, dict) else {}
-    if not isinstance(env_block, dict):
+    if not isinstance(data, dict):
         return {}
+    env_block = data.get("env", {})
+    if not isinstance(env_block, dict):
+        env_block = {}
 
     env_block_upper = {str(k).upper(): v for k, v in env_block.items()}
     env_present = {k.upper() for k in os.environ}
 
-    nested: dict[str, dict[str, Any]] = {}
+    nested: dict[str, Any] = {}
     for sub_name, sub_finfo in Settings.model_fields.items():
         sub_cls = sub_finfo.annotation
         if not (isinstance(sub_cls, type) and issubclass(sub_cls, BaseModel)):
@@ -124,4 +151,9 @@ def _read_json_overrides(path: Path) -> dict[str, dict[str, Any]]:
                     break
         if sub_data:
             nested[sub_name] = sub_data
+
+    mcp_servers = data.get("mcp_servers")
+    if isinstance(mcp_servers, list):
+        nested["mcp_servers"] = mcp_servers
+
     return nested
