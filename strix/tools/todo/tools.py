@@ -20,6 +20,30 @@ logger = logging.getLogger(__name__)
 VALID_PRIORITIES = ["low", "normal", "high", "critical"]
 VALID_STATUSES = ["pending", "in_progress", "done"]
 
+_PRIORITY_ALIASES = {
+    "medium": "normal",
+    "med": "normal",
+    "moderate": "normal",
+    "default": "normal",
+    "none": "normal",
+    "urgent": "critical",
+    "highest": "critical",
+    "crit": "critical",
+    "blocker": "critical",
+    "important": "high",
+    "hi": "high",
+    "major": "high",
+    "minor": "low",
+    "lowest": "low",
+    "trivial": "low",
+    "lo": "low",
+    "p0": "critical",
+    "p1": "high",
+    "p2": "normal",
+    "p3": "low",
+    "p4": "low",
+}
+
 _PRIORITY_RANK = {"critical": 0, "high": 1, "normal": 2, "low": 3}
 _STATUS_RANK = {"done": 0, "in_progress": 1, "pending": 2}
 
@@ -110,7 +134,8 @@ def _get_agent_todos(agent_id: str) -> dict[str, dict[str, Any]]:
 
 
 def _normalize_priority(priority: str | None, default: str = "normal") -> str:
-    candidate = (priority or default or "normal").lower()
+    candidate = (priority or default or "normal").strip().lower()
+    candidate = _PRIORITY_ALIASES.get(candidate, candidate)
     if candidate not in VALID_PRIORITIES:
         raise ValueError(f"Invalid priority. Must be one of: {', '.join(VALID_PRIORITIES)}")
     return candidate
@@ -286,6 +311,7 @@ async def create_todo(ctx: RunContextWrapper, todos: str) -> str:
               acceptance criteria.
             - ``priority`` (str, optional): one of ``"low"`` /
               ``"normal"`` / ``"high"`` / ``"critical"``. Defaults to
+              ``"normal"``; ``"medium"`` is accepted and maps to
               ``"normal"``.
 
             Example: ``[{"title": "Probe /admin", "priority": "high"},
