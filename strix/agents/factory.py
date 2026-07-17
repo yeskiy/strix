@@ -55,9 +55,10 @@ from strix.tools.web_search.tool import web_search
 
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Sequence
+    from collections.abc import Awaitable, Callable, Iterable, Sequence
 
     from agents import RunContextWrapper
+    from agents.mcp import MCPServer
     from agents.tool import FunctionToolResult
 
 
@@ -363,6 +364,34 @@ _BASE_TOOLS: tuple[Tool, ...] = (
 _EXTRA_TOOLS: list[Tool] = []
 
 
+# MCP servers attached to every scan agent (root + children). Register the
+# connected set before the first ``build_strix_agent`` call, mirroring
+# ``_EXTRA_TOOLS``. The runner clears this in its ``finally``.
+_MCP_SERVERS: list[MCPServer] = []
+
+
+def register_mcp_servers(servers: Iterable[MCPServer]) -> None:
+    """Attach MCP servers to every scan agent built afterwards.
+
+    Call before the first ``build_strix_agent`` so root and children share the
+    same connected servers. Duplicate server objects are ignored.
+    """
+    for server in servers:
+        if server not in _MCP_SERVERS:
+            _MCP_SERVERS.append(server)
+            logger.info("Registered MCP server: %s", getattr(server, "name", server))
+
+
+def clear_mcp_servers() -> None:
+    """Drop all registered MCP servers (call in the scan's ``finally``)."""
+    _MCP_SERVERS.clear()
+
+
+def registered_mcp_servers() -> tuple[MCPServer, ...]:
+    """Return the currently registered MCP servers."""
+    return tuple(_MCP_SERVERS)
+
+
 def _ensure_unique_tool_names(tools: Sequence[Tool]) -> None:
     seen: set[str] = set()
     duplicates: set[str] = set()
@@ -455,6 +484,7 @@ def build_strix_agent(
         name=name,
         instructions=instructions,
         tools=tools,
+        mcp_servers=list(_MCP_SERVERS),
         tool_use_behavior=_finish_tool_use_behavior,
         model=None,
         capabilities=[
